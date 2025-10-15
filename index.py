@@ -34,7 +34,6 @@ def api_info():
 @app.post("/upload")
 async def upload_excel(file: UploadFile = File(...)):
     try:
-        # Validate file
         if not file.filename.endswith(('.xlsx', '.xls')):
             return JSONResponse(
                 content={
@@ -44,13 +43,14 @@ async def upload_excel(file: UploadFile = File(...)):
                 status_code=400
             )
         
-        # Read file
         contents = await file.read()
-        
-        # Parse Excel
         df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
         
-        # Return response
+        # Convert datetime columns to string
+        for col in df.columns:
+            if df[col].dtype == 'datetime64[ns]':
+                df[col] = df[col].astype(str)
+        
         return JSONResponse(
             content={
                 "success": True,
@@ -63,9 +63,8 @@ async def upload_excel(file: UploadFile = File(...)):
         )
         
     except Exception as e:
-        # Log error
         error_details = traceback.format_exc()
-        print(f"Error processing file: {error_details}")
+        print(f"Error: {error_details}")
         
         return JSONResponse(
             content={
