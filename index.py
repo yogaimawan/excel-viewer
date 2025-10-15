@@ -4,8 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 import traceback
-import json
-from datetime import datetime, date
 
 app = FastAPI(title="Excel Viewer API")
 
@@ -33,22 +31,10 @@ def api_info():
         "status": "running"
     }
 
-def convert_to_serializable(obj):
-    """Convert pandas/numpy types to JSON serializable types"""
-    if pd.isna(obj):
-        return None
-    elif isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    elif isinstance(obj, (pd.Timestamp)):
-        return obj.isoformat()
-    elif hasattr(obj, 'item'):  # numpy types
-        return obj.item()
-    else:
-        return obj
-
 @app.post("/upload")
 async def upload_excel(file: UploadFile = File(...)):
     try:
+        # Validate file extension
         if not file.filename.endswith(('.xlsx', '.xls')):
             return JSONResponse(
                 content={
@@ -58,31 +44,43 @@ async def upload_excel(file: UploadFile = File(...)):
                 status_code=400
             )
         
+        # Read file contents
         contents = await file.read()
-        df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
         
-        # Convert ALL data to JSON-serializable format
-        preview_data = []
-        for _, row in df.head(50).iterrows():
-            row_dict = {}
-            for col in df.columns:
-                row_dict[col] = convert_to_serializable(row[col])
-            preview_data.append(row_dict)
+        # Read Excel with ALL columns as string
+        df = pd.read_excel(
+            io.BytesIO(contents), 
+            engine='openpyxl',
+            dtype=str,  # Force semua kolom jadi string
+            keep_default_na=False  # Jangan convert empty cells ke NaN
+        )
         
+        # Force column names jadi string (handle datetime headers)
+        df.columns = [str(col) for col in df.columns]
+        
+        # Replace NaN dengan empty string
+        df = df.fillna('')
+        
+        # Convert to dict (semua udah string, aman untuk JSON)
+        preview_data = df.head(50).to_dict('records')
+        
+        # Return response
         return JSONResponse(
             content={
                 "success": True,
                 "filename": file.filename,
                 "rows": int(len(df)),
                 "columns": int(len(df.columns)),
-                "column_names": [str(col) for col in df.columns],
+                "column_names": list(df.columns),
                 "preview": preview_data
             }
         )
         
     except Exception as e:
+        # Log detailed error
         error_details = traceback.format_exc()
-        print(f"Error: {error_details}")
+        print(f"Error processing file:")
+        print(error_details)
         
         return JSONResponse(
             content={
