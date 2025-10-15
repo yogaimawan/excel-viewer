@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 import traceback
+import json
+from datetime import datetime, date
 
 app = FastAPI(title="Excel Viewer API")
 
@@ -31,6 +33,19 @@ def api_info():
         "status": "running"
     }
 
+def convert_to_serializable(obj):
+    """Convert pandas/numpy types to JSON serializable types"""
+    if pd.isna(obj):
+        return None
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, (pd.Timestamp)):
+        return obj.isoformat()
+    elif hasattr(obj, 'item'):  # numpy types
+        return obj.item()
+    else:
+        return obj
+
 @app.post("/upload")
 async def upload_excel(file: UploadFile = File(...)):
     try:
@@ -46,19 +61,22 @@ async def upload_excel(file: UploadFile = File(...)):
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
         
-        # Convert datetime columns to string
-        for col in df.columns:
-            if df[col].dtype == 'datetime64[ns]':
-                df[col] = df[col].astype(str)
+        # Convert ALL data to JSON-serializable format
+        preview_data = []
+        for _, row in df.head(50).iterrows():
+            row_dict = {}
+            for col in df.columns:
+                row_dict[col] = convert_to_serializable(row[col])
+            preview_data.append(row_dict)
         
         return JSONResponse(
             content={
                 "success": True,
                 "filename": file.filename,
-                "rows": len(df),
-                "columns": len(df.columns),
-                "column_names": df.columns.tolist(),
-                "preview": df.head(50).to_dict('records')
+                "rows": int(len(df)),
+                "columns": int(len(df.columns)),
+                "column_names": [str(col) for col in df.columns],
+                "preview": preview_data
             }
         )
         
