@@ -1,8 +1,9 @@
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
+import os
 
 app = FastAPI(title="Excel Viewer API")
 
@@ -16,6 +17,11 @@ app.add_middleware(
 
 @app.get("/")
 def root():
+    # Serve HTML file
+    return FileResponse("index.html")
+
+@app.get("/api")
+def api_info():
     return {
         "name": "Excel Viewer API",
         "version": "1.0",
